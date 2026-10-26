@@ -27,4 +27,29 @@ struct Connection {
     int toStationId=0;
 };
 
+class GasNetwork {
+    public:
+    void addPipe();
+    void addStation();
+    void showNetwork();
+    void togglePipeRepair();
+    void manageStation();
+    void connectStations();
+    void sort();
+    void saveData();
+    void loadData();
+    
+    private:
+    std::vector<Pipe> pipes;
+    std::vector<Station> stations;
+    std::vector<Connection> connections;
+
+    int nextPipeId() const;
+    int nextStationId() const;
+    Pipe* findPipe(int id);
+    const Pipe* findPipe(int id) const;
+    Station* findStation(int id) const;
+    const Station* findStation(int id) const;
+};
+
 #endif
