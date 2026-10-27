@@ -1,6 +1,9 @@
 #include "hat.h"
 
 #include <algorithm>
+#include <chrono>
+#include <cctype>
+#include <ctime>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -9,6 +12,7 @@
 #include <sstream>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 namespace {
 
@@ -44,11 +48,14 @@ namespace {
         std::string value;
         while (true) {
             std::cout << vvod;
-            if (std::getline(std::cin, value) && !value.empty()) {
+            if (std::getline(std::cin >> std::ws, value) && !value.empty()) {
                 return value;
             }
-            std::cout << "Invalid input. Please enter sth\n";
-        }    
+            std::cout << "Invalid input. Please enter a non-empty value.\n";
+            if (!std::cin) {
+                std::cin.clear();
+            }
+        }
     }
 
     int readDiameter() {
@@ -63,13 +70,36 @@ namespace {
 
     bool ask(const std::string& question) {
         while (true) {
-            int answer = readInt(question + " (y for Yes, n for No): ");
-            if (answer == 'y' || answer == 'Y') {
-                return answer=='y' || answer=='Y';
-            }
-            std::cout << "Please enter 'y' or 'n'\n";
+            int answer = readInt(question + " (1 - Yes, 0 - No): ");
+            if (answer == 0 || answer == 1) return answer == 1;
+            std::cout << "Please enter 1 or 0.\n";
         }
     }
+
+    std::string lowerCopy(std::string value) {
+        for (char& ch : value) {
+            ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+        }
+        return value;
+    }
+}
+
+void GasNetwork::logAction(const std::string& action, const std::string& details) const {
+    std::ofstream logFile("user_actions.log", std::ios::app);
+    if (!logFile) {
+        std::cerr << "Warning: cannot write to user_actions.log\n";
+        return;
+    }
+
+    const auto now = std::chrono::system_clock::now();
+    const std::time_t timeValue = std::chrono::system_clock::to_time_t(now);
+    const std::tm* localTime = std::localtime(&timeValue);
+    if (localTime) {
+        logFile << std::put_time(localTime, "%Y-%m-%d %H:%M:%S");
+    } else {
+        logFile << "unknown-time";
+    }
+    logFile << " | " << action << " | " << details << '\n';
 }
 
 int GasNetwork::nextPipeId() const {
@@ -127,6 +157,7 @@ void GasNetwork::addPipe() {
 
     pipes.push_back(pipe);
     std::cout << "Pipe created. Pipe ID: " << pipe.id << "\n";
+    logAction("ADD_PIPE", "ID=" + std::to_string(pipe.id) + ", name=" + pipe.name);
 }
 
 void GasNetwork::addStation() {
@@ -152,6 +183,7 @@ void GasNetwork::addStation() {
     station.totalRepairWorksNasos = 0;
     stations.push_back(station);
     std::cout << "Station created. Station ID: " << station.id << "\n";
+    logAction("ADD_STATION", "ID=" + std::to_string(station.id) + ", name=" + station.name);
 }
 
 void GasNetwork::showNetwork() const {
@@ -206,24 +238,28 @@ void GasNetwork::showNetwork() const {
 void GasNetwork::togglePipeRepair() {
     if (pipes.empty()) {
         std::cout << "First, create a pipe\n";
+        logAction("TOGGLE_PIPE_REPAIR_FAILED", "No pipes exist");
         return;
     }
 
     int id = readInt("Enter pipe ID: ");
     Pipe* pipe = findPipe(id);
     if (!pipe) {
-        std::cout << "Pipe with such ID not foun\n";
+        std::cout << "Pipe with such ID not found\n";
+        logAction("TOGGLE_PIPE_REPAIR_FAILED", "Pipe ID=" + std::to_string(id) + " not found");
         return;
     }
 
     pipe->inRepair = !pipe->inRepair;
     std::cout << "Pipe state changed: "
               << (pipe->inRepair ? "in repair" : "not in repair") << ".\n";
+    logAction("TOGGLE_PIPE_REPAIR", "ID=" + std::to_string(id) + ", inRepair=" + (pipe->inRepair ? "true" : "false"));
 }
 
 void GasNetwork::manageStation() {
     if (stations.empty()) {
         std::cout << "First, create a station\n";
+        logAction("MANAGE_STATION_FAILED", "No stations exist");
         return;
     }
 
@@ -231,6 +267,7 @@ void GasNetwork::manageStation() {
     Station* station = findStation(id);
     if (!station) {
         std::cout << "Station with such ID not found\n";
+        logAction("MANAGE_STATION_FAILED", "ID=" + std::to_string(id) + " not found");
         return;
     }
 
@@ -281,13 +318,17 @@ void GasNetwork::manageStation() {
         station->totalRepairWorksNasos += count;
         std::cout << "Workshops sent to repair.\n";
     } else {
-        std::cout << "Nu ti dibil?\n";
+        std::cout << "Unknown station management option.\n";
+        logAction("MANAGE_STATION_FAILED", "ID=" + std::to_string(id) + ", invalid option=" + std::to_string(choice));
+        return;
     }
+    logAction("MANAGE_STATION", "ID=" + std::to_string(id) + ", option=" + std::to_string(choice));
 }
 
 void GasNetwork::connectStations() {
     if (stations.size() < 2) {
         std::cout << "For connection, need to create at least two stations\n";
+        logAction("CONNECT_STATIONS_FAILED", "Fewer than two stations");
         return;
     }
 
@@ -301,10 +342,12 @@ void GasNetwork::connectStations() {
 
     if (!findStation(fromId) || !findStation(toId)) {
         std::cout << "One of the stations not found\n";
+        logAction("CONNECT_STATIONS_FAILED", "unknown endpoint: " + std::to_string(fromId) + " -> " + std::to_string(toId));
         return;
     }
     if (fromId == toId) {
         std::cout << "Cannot connect a station to itself\n";
+        logAction("CONNECT_STATIONS_FAILED", "same endpoint ID=" + std::to_string(fromId));
         return;
     }
 
@@ -314,6 +357,7 @@ void GasNetwork::connectStations() {
         if (connection.fromStation == fromId &&
             connection.toStation == toId) {
             std::cout << "These stations are already connected\n";
+            logAction("CONNECT_STATIONS_FAILED", "duplicate connection " + std::to_string(fromId) + " -> " + std::to_string(toId));
             return;
         }
     }
@@ -330,6 +374,7 @@ void GasNetwork::connectStations() {
         std::cout << "No free pipe of diameter " << diameter << " mm found\n";
         if (!ask("Create a new pipe?")) {
             std::cout << "Connection cancelled\n";
+            logAction("CONNECT_STATIONS_CANCELLED", std::to_string(fromId) + " -> " + std::to_string(toId));
             return;
         }
 
@@ -351,11 +396,14 @@ void GasNetwork::connectStations() {
     std::cout << "Station " << fromId << " is connected to station " << toId
               << " with pipe ID " << availablePipe->id
               << " (diameter " << diameter << " mm)\n";
+    logAction("CONNECT_STATIONS", "from=" + std::to_string(fromId) + ", to=" +
+              std::to_string(toId) + ", pipeID=" + std::to_string(availablePipe->id));
 }
 
 void GasNetwork::sort() const {
     if (stations.empty()) {
         std::cout << "No stations available for sorting\n";
+        logAction("TOPOLOGICAL_SORT_FAILED", "No stations exist");
         return;
     }
 
@@ -401,6 +449,7 @@ void GasNetwork::sort() const {
 
     if (order.size() != stations.size()) {
         std::cout << "Sorting is not possible: a cycle has been detected in the network\n";
+        logAction("TOPOLOGICAL_SORT_FAILED", "Cycle detected");
         return;
     }
 
@@ -412,12 +461,434 @@ void GasNetwork::sort() const {
         if (station) std::cout << " (" << station->name << ")";
     }
     std::cout << "\n";
+    logAction("TOPOLOGICAL_SORT", "success, stationCount=" + std::to_string(order.size()));
 }
 
+
+// Removes a pipe and any connection that used it. This keeps pipe and connection data consistent.
+bool GasNetwork::erasePipeById(int id) {
+    auto pipeIt = std::find_if(pipes.begin(), pipes.end(),
+        [id](const Pipe& pipe) { return pipe.id == id; });
+    if (pipeIt == pipes.end()) return false;
+
+    connections.erase(std::remove_if(connections.begin(), connections.end(),
+        [id](const Connection& connection) { return connection.pipeId == id; }),
+        connections.end());
+    pipes.erase(pipeIt);
+    return true;
+}
+
+void GasNetwork::deletePipe() {
+    if (pipes.empty()) {
+        std::cout << "No pipes to delete.\n";
+        logAction("DELETE_PIPE_FAILED", "No pipes exist");
+        return;
+    }
+
+    showNetwork();
+    const int id = readInt("Enter pipe ID to delete: ");
+    if (!erasePipeById(id)) {
+        std::cout << "Pipe with such ID not found.\n";
+        logAction("DELETE_PIPE_FAILED", "ID=" + std::to_string(id) + " not found");
+        return;
+    }
+
+    std::cout << "Pipe " << id << " deleted. Any connection using it was removed.\n";
+    logAction("DELETE_PIPE", "ID=" + std::to_string(id));
+}
+
+void GasNetwork::editStation() {
+    if (stations.empty()) {
+        std::cout << "No stations to edit.\n";
+        logAction("EDIT_STATION_FAILED", "No stations exist");
+        return;
+    }
+
+    for (const Station& station : stations) {
+        std::cout << "ID: " << station.id << " | Name: " << station.name
+                  << " | Workshops: " << station.activeNasos << "/" << station.totalNasos
+                  << " | In repair: " << station.totalRepairWorksNasos << "\n";
+    }
+
+    const int id = readInt("Enter station ID to edit: ");
+    Station* station = findStation(id);
+    if (!station) {
+        std::cout << "Station with such ID not found.\n";
+        logAction("EDIT_STATION_FAILED", "ID=" + std::to_string(id) + " not found");
+        return;
+    }
+
+    std::cout << "1. Change name\n"
+              << "2. Change total number of workshops\n"
+              << "3. Change number of active workshops\n"
+              << "4. Change number of workshops in repair\n"
+              << "0. Cancel\n";
+    const int choice = readInt("Choose what to edit: ");
+    switch (choice) {
+        case 1:
+            station->name = readString("Enter new station name: ");
+            break;
+        case 2: {
+            const int total = readInt("Enter new total number of workshops: ");
+            if (total <= 0 || total < station->activeNasos + station->totalRepairWorksNasos) {
+                std::cout << "Total must be positive and not smaller than active + repair workshops.\n";
+                logAction("EDIT_STATION_FAILED", "ID=" + std::to_string(id) + ", invalid total");
+                return;
+            }
+            station->totalNasos = total;
+            break;
+        }
+        case 3: {
+            const int maxActive = station->totalNasos - station->totalRepairWorksNasos;
+            const int active = readInt("Enter new number of active workshops: ");
+            if (active < 0 || active > maxActive) {
+                std::cout << "Active workshops must be between 0 and " << maxActive << ".\n";
+                logAction("EDIT_STATION_FAILED", "ID=" + std::to_string(id) + ", invalid active count");
+                return;
+            }
+            station->activeNasos = active;
+            break;
+        }
+        case 4: {
+            const int maxRepair = station->totalNasos - station->activeNasos;
+            const int repair = readInt("Enter new number of workshops in repair: ");
+            if (repair < 0 || repair > maxRepair) {
+                std::cout << "Workshops in repair must be between 0 and " << maxRepair << ".\n";
+                logAction("EDIT_STATION_FAILED", "ID=" + std::to_string(id) + ", invalid repair count");
+                return;
+            }
+            station->totalRepairWorksNasos = repair;
+            break;
+        }
+        case 0:
+            logAction("EDIT_STATION_CANCELLED", "ID=" + std::to_string(id));
+            std::cout << "Editing cancelled.\n";
+            return;
+        default:
+            std::cout << "Unknown option.\n";
+            logAction("EDIT_STATION_FAILED", "ID=" + std::to_string(id) + ", invalid option");
+            return;
+    }
+
+    std::cout << "Station updated.\n";
+    logAction("EDIT_STATION", "ID=" + std::to_string(id) + ", option=" + std::to_string(choice));
+}
+
+void GasNetwork::deleteStation() {
+    if (stations.empty()) {
+        std::cout << "No stations to delete.\n";
+        logAction("DELETE_STATION_FAILED", "No stations exist");
+        return;
+    }
+
+    for (const Station& station : stations) {
+        std::cout << "ID: " << station.id << " | Name: " << station.name << "\n";
+    }
+    const int id = readInt("Enter station ID to delete: ");
+    if (!findStation(id)) {
+        std::cout << "Station with such ID not found.\n";
+        logAction("DELETE_STATION_FAILED", "ID=" + std::to_string(id) + " not found");
+        return;
+    }
+    if (!ask("Delete this station and its connections?")) {
+        std::cout << "Deletion cancelled.\n";
+        logAction("DELETE_STATION_CANCELLED", "ID=" + std::to_string(id));
+        return;
+    }
+
+    std::vector<int> freedPipeIds;
+    for (const Connection& connection : connections) {
+        if (connection.fromStation == id || connection.toStation == id) {
+            freedPipeIds.push_back(connection.pipeId);
+        }
+    }
+    connections.erase(std::remove_if(connections.begin(), connections.end(),
+        [id](const Connection& connection) {
+            return connection.fromStation == id || connection.toStation == id;
+        }), connections.end());
+
+    for (int pipeId : freedPipeIds) {
+        Pipe* pipe = findPipe(pipeId);
+        if (pipe) pipe->isConnected = false;
+    }
+    stations.erase(std::remove_if(stations.begin(), stations.end(),
+        [id](const Station& station) { return station.id == id; }), stations.end());
+
+    std::cout << "Station " << id << " deleted. Related connections removed and their pipes freed.\n";
+    logAction("DELETE_STATION", "ID=" + std::to_string(id) + ", removedConnections=" +
+              std::to_string(freedPipeIds.size()));
+}
+
+// Interactive filter shared by pipe search and batch operations.
+std::vector<int> GasNetwork::findPipesByUserFilter() {
+    std::vector<int> matchedIds;
+    if (pipes.empty()) {
+        std::cout << "No pipes available.\n";
+        return matchedIds;
+    }
+
+    std::cout << "Pipe filter:\n"
+              << "1. By name (contains text)\n"
+              << "2. By repair status\n"
+              << "3. All pipes\n";
+    const int filter = readInt("Choose filter: ");
+    std::string namePart;
+    int repairFilter = -1;
+    if (filter == 1) {
+        namePart = lowerCopy(readString("Enter part of pipe name: "));
+    } else if (filter == 2) {
+        repairFilter = readInt("In repair? (1 - yes, 0 - no): ");
+        if (repairFilter != 0 && repairFilter != 1) {
+            std::cout << "Invalid repair status.\n";
+            logAction("PIPE_FILTER_FAILED", "invalid repair status");
+            return matchedIds;
+        }
+    } else if (filter != 3) {
+        std::cout << "Unknown filter.\n";
+        logAction("PIPE_FILTER_FAILED", "invalid filter option=" + std::to_string(filter));
+        return matchedIds;
+    }
+
+    for (const Pipe& pipe : pipes) {
+        bool matches = false;
+        if (filter == 1) {
+            matches = lowerCopy(pipe.name).find(namePart) != std::string::npos;
+        } else if (filter == 2) {
+            matches = pipe.inRepair == (repairFilter == 1);
+        } else {
+            matches = true;
+        }
+        if (matches) matchedIds.push_back(pipe.id);
+    }
+
+    std::cout << "Matching pipes: " << matchedIds.size() << "\n";
+    for (int id : matchedIds) {
+        const Pipe* pipe = findPipe(id);
+        if (pipe) {
+            std::cout << "ID: " << pipe->id << " | Name: " << pipe->name
+                      << " | Length: " << pipe->length << " km | Diameter: " << pipe->diameter
+                      << " mm | Repair: " << (pipe->inRepair ? "Yes" : "No")
+                      << " | Connected: " << (pipe->isConnected ? "Yes" : "No") << "\n";
+        }
+    }
+    const std::string filterDescription = filter == 1 ? "name=" + namePart :
+        (filter == 2 ? "inRepair=" + std::string(repairFilter == 1 ? "true" : "false") : "all pipes");
+    logAction("SEARCH_PIPES", filterDescription + ", matches=" + std::to_string(matchedIds.size()));
+    return matchedIds;
+}
+
+std::vector<int> GasNetwork::choosePipesFromMatches(const std::vector<int>& matchedIds) {
+    std::vector<int> selected;
+    if (matchedIds.empty()) return selected;
+
+    std::cout << "1. Select all matching pipes\n"
+              << "2. Select a subset by ID\n"
+              << "0. Cancel\n";
+    const int choice = readInt("Choose selection mode: ");
+    if (choice == 0) return selected;
+    if (choice == 1) return matchedIds;
+    if (choice != 2) {
+        std::cout << "Unknown selection mode.\n";
+        return selected;
+    }
+
+    int count = readInt("How many pipes do you want to select? ");
+    if (count <= 0 || static_cast<std::size_t>(count) > matchedIds.size()) {
+        std::cout << "Invalid number of pipes.\n";
+        return selected;
+    }
+
+    std::unordered_set<int> allowed(matchedIds.begin(), matchedIds.end());
+    std::unordered_set<int> alreadySelected;
+    for (int i = 0; i < count; ++i) {
+        const int id = readInt("Enter selected pipe ID: ");
+        if (!allowed.count(id)) {
+            std::cout << "Pipe ID " << id << " is not in the search results. Try again.\n";
+            --i;
+            continue;
+        }
+        if (!alreadySelected.insert(id).second) {
+            std::cout << "This ID has already been selected. Try again.\n";
+            --i;
+            continue;
+        }
+        selected.push_back(id);
+    }
+    return selected;
+}
+
+void GasNetwork::searchPipes() {
+    if (pipes.empty()) {
+        std::cout << "No pipes available for search.\n";
+        logAction("SEARCH_PIPES_FAILED", "No pipes exist");
+        return;
+    }
+    const std::vector<int> result = findPipesByUserFilter();
+    if (result.empty()) std::cout << "No pipes matched the filter.\n";
+}
+
+void GasNetwork::searchStations() {
+    if (stations.empty()) {
+        std::cout << "No stations available for search.\n";
+        logAction("SEARCH_STATIONS_FAILED", "No stations exist");
+        return;
+    }
+
+    std::cout << "Station filter:\n"
+              << "1. By name (contains text)\n"
+              << "2. By percentage of unused workshops\n";
+    const int filter = readInt("Choose filter: ");
+    std::vector<const Station*> matches;
+    std::string namePart;
+    double minPercent = 0.0;
+    double maxPercent = 100.0;
+
+    if (filter == 1) {
+        namePart = lowerCopy(readString("Enter part of station name: "));
+        for (const Station& station : stations) {
+            if (lowerCopy(station.name).find(namePart) != std::string::npos) {
+                matches.push_back(&station);
+            }
+        }
+    } else if (filter == 2) {
+        auto readPercent = [](const std::string& prompt) {
+            double value;
+            while (true) {
+                std::cout << prompt;
+                if (std::cin >> value && value >= 0.0 && value <= 100.0) {
+                    std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+                    return value;
+                }
+                std::cout << "Enter a percentage between 0 and 100.\n";
+                std::cin.clear();
+                std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+            }
+        };
+        minPercent = readPercent("Minimum unused workshop percentage (0-100): ");
+        maxPercent = readPercent("Maximum unused workshop percentage (0-100): ");
+        if (minPercent > maxPercent) {
+            std::cout << "Minimum percentage cannot be greater than maximum.\n";
+            logAction("SEARCH_STATIONS_FAILED", "invalid percentage range");
+            return;
+        }
+        for (const Station& station : stations) {
+            const int freeShops = station.totalNasos - station.activeNasos - station.totalRepairWorksNasos;
+            const double percent = station.totalNasos > 0
+                ? 100.0 * freeShops / station.totalNasos : 0.0;
+            if (percent >= minPercent && percent <= maxPercent) matches.push_back(&station);
+        }
+    } else {
+        std::cout << "Unknown filter.\n";
+        logAction("SEARCH_STATIONS_FAILED", "invalid filter option=" + std::to_string(filter));
+        return;
+    }
+
+    std::cout << "Matching stations: " << matches.size() << "\n";
+    for (const Station* station : matches) {
+        const int freeShops = station->totalNasos - station->activeNasos - station->totalRepairWorksNasos;
+        const double percent = station->totalNasos > 0
+            ? 100.0 * freeShops / station->totalNasos : 0.0;
+        std::cout << "ID: " << station->id << " | Name: " << station->name
+                  << " | Active: " << station->activeNasos << "/" << station->totalNasos
+                  << " | In repair: " << station->totalRepairWorksNasos
+                  << " | Unused: " << percent << "%\n";
+    }
+
+    if (filter == 1) {
+        logAction("SEARCH_STATIONS", "name=" + namePart + ", matches=" + std::to_string(matches.size()));
+    } else {
+        logAction("SEARCH_STATIONS", "unusedPercent=" + std::to_string(minPercent) + "-" +
+                  std::to_string(maxPercent) + ", matches=" + std::to_string(matches.size()));
+    }
+}
+
+void GasNetwork::batchEditPipes() {
+    if (pipes.empty()) {
+        std::cout << "No pipes available for batch operations.\n";
+        logAction("BATCH_PIPE_OPERATION_FAILED", "No pipes exist");
+        return;
+    }
+
+    const std::vector<int> matchedIds = findPipesByUserFilter();
+    if (matchedIds.empty()) {
+        std::cout << "No pipes matched the filter.\n";
+        logAction("BATCH_PIPE_OPERATION_FAILED", "No matches");
+        return;
+    }
+    const std::vector<int> selectedIds = choosePipesFromMatches(matchedIds);
+    if (selectedIds.empty()) {
+        std::cout << "Batch operation cancelled or no pipes selected.\n";
+        logAction("BATCH_PIPE_OPERATION_CANCELLED", "No pipe selected");
+        return;
+    }
+
+    std::cout << "Batch operation:\n"
+              << "1. Set the same name for selected pipes\n"
+              << "2. Set the same length for selected pipes\n"
+              << "3. Set the same diameter for selected pipes\n"
+              << "4. Toggle repair status of selected pipes\n"
+              << "5. Delete selected pipes\n"
+              << "0. Cancel\n";
+    const int operation = readInt("Choose operation: ");
+    if (operation == 0) {
+        logAction("BATCH_PIPE_OPERATION_CANCELLED", "User cancelled");
+        return;
+    }
+
+    if (operation == 1) {
+        const std::string newName = readString("Enter the new name for all selected pipes: ");
+        for (int id : selectedIds) {
+            Pipe* pipe = findPipe(id);
+            if (pipe) pipe->name = newName;
+        }
+    } else if (operation == 2) {
+        const double newLength = readPositiveDoubles("Enter the new length in kilometers: ");
+        for (int id : selectedIds) {
+            Pipe* pipe = findPipe(id);
+            if (pipe) pipe->length = newLength;
+        }
+    } else if (operation == 3) {
+        const int newDiameter = readDiameter();
+        for (int id : selectedIds) {
+            Pipe* pipe = findPipe(id);
+            if (pipe) pipe->diameter = newDiameter;
+        }
+    } else if (operation == 4) {
+        for (int id : selectedIds) {
+            Pipe* pipe = findPipe(id);
+            if (pipe) pipe->inRepair = !pipe->inRepair;
+        }
+    } else if (operation == 5) {
+        if (!ask("Delete all selected pipes?")) {
+            std::cout << "Deletion cancelled.\n";
+            logAction("BATCH_DELETE_PIPES_CANCELLED", "User rejected confirmation");
+            return;
+        }
+        for (int id : selectedIds) {
+            erasePipeById(id);
+            logAction("DELETE_PIPE", "ID=" + std::to_string(id) + ", source=batch");
+        }
+        std::cout << "Selected pipes deleted.\n";
+        logAction("BATCH_DELETE_PIPES", "count=" + std::to_string(selectedIds.size()));
+        return;
+    } else {
+        std::cout << "Unknown operation.\n";
+        logAction("BATCH_PIPE_OPERATION_FAILED", "invalid operation=" + std::to_string(operation));
+        return;
+    }
+
+    std::cout << "Batch operation completed for " << selectedIds.size() << " pipe(s).\n";
+    logAction("BATCH_EDIT_PIPES", "operation=" + std::to_string(operation) +
+              ", count=" + std::to_string(selectedIds.size()));
+}
+
+
 void GasNetwork::saveData() const {
-    std::ofstream file("data.txt");
+    const std::string filename = readString("Enter filename to save (for example network.txt): ");
+    std::ofstream file(filename);
     if (!file) {
-        std::cout << "Failed to open data.txt for writing\n";
+        std::cout << "Failed to open " << filename << " for writing\n";
+        logAction("SAVE_FAILED", "file=" + filename + ", cannot open for writing");
         return;
     }
 
@@ -445,15 +916,21 @@ void GasNetwork::saveData() const {
 
     if (!file) {
         std::cout << "Error while writing data\n";
+        logAction("SAVE_FAILED", "file=" + filename + ", write error");
         return;
     }
-    std::cout << "Data saved to data.txt\n";
+    std::cout << "Data saved to " << filename << "\n";
+    logAction("SAVE", "file=" + filename + ", pipes=" + std::to_string(pipes.size()) +
+              ", stations=" + std::to_string(stations.size()));
 }
 
 void GasNetwork::loadData() {
-    std::ifstream file("data.txt");
+    const std::string filename = readString("Enter filename to load (for example network.txt): ");
+    logAction("LOAD_ATTEMPT", "file=" + filename);
+    std::ifstream file(filename);
     if (!file) {
-        std::cout << "File data.txt not found\n";
+        std::cout << "File " << filename << " not found\n";
+        logAction("LOAD_FAILED", "file=" + filename + ", cannot open");
         return;
     }
 
@@ -461,6 +938,7 @@ void GasNetwork::loadData() {
     std::getline(file, signature);
     if (signature != "GAS_NETWORK_V1") {
         std::cout << "Invalid file format. Please use a file saved by this version of the program\n";
+        logAction("LOAD_FAILED", "file=" + filename + ", invalid format");
         return;
     }
 
@@ -471,6 +949,7 @@ void GasNetwork::loadData() {
 
     if (!(file >> count) || count > 100000) {
         std::cout << "Invalid data in file\n";
+        logAction("LOAD_FAILED", "file=" + filename + ", invalid or inconsistent data");
         return;
     }
     for (std::size_t i = 0; i < count; ++i) {
@@ -478,12 +957,14 @@ void GasNetwork::loadData() {
         if (!(file >> pipe.id >> std::quoted(pipe.name) >> pipe.length
                     >> pipe.diameter >> pipe.inRepair >> pipe.isConnected)) {
             std::cout << "Error reading pipe data\n";
+            logAction("LOAD_FAILED", "file=" + filename + ", invalid or inconsistent data");
             return;
         }
         if (pipe.id <= 0 || pipe.length <= 0 ||
             (pipe.diameter != 500 && pipe.diameter != 700 &&
              pipe.diameter != 1000 && pipe.diameter != 1400)) {
             std::cout << "Invalid pipe data found\n";
+            logAction("LOAD_FAILED", "file=" + filename + ", invalid or inconsistent data");
             return;
         }
         loadedPipes.push_back(pipe);
@@ -491,6 +972,7 @@ void GasNetwork::loadData() {
 
     if (!(file >> count) || count > 100000) {
         std::cout << "Invalid data in file\n";
+        logAction("LOAD_FAILED", "file=" + filename + ", invalid or inconsistent data");
         return;
     }
     for (std::size_t i = 0; i < count; ++i) {
@@ -499,6 +981,7 @@ void GasNetwork::loadData() {
                     >> station.totalNasos >> station.activeNasos
                     >> station.totalRepairWorksNasos)) {
             std::cout << "Error reading station data\n";
+            logAction("LOAD_FAILED", "file=" + filename + ", invalid or inconsistent data");
             return;
         }
         if (station.id <= 0 || station.totalNasos <= 0 ||
@@ -506,6 +989,7 @@ void GasNetwork::loadData() {
             station.totalRepairWorksNasos < 0 ||
             station.activeNasos + station.totalRepairWorksNasos > station.totalNasos) {
             std::cout << "Invalid station data found\n";
+            logAction("LOAD_FAILED", "file=" + filename + ", invalid or inconsistent data");
             return;
         }
         loadedStations.push_back(station);
@@ -513,6 +997,7 @@ void GasNetwork::loadData() {
 
     if (!(file >> count) || count > 100000) {
         std::cout << "Invalid data in file\n";
+        logAction("LOAD_FAILED", "file=" + filename + ", invalid or inconsistent data");
         return;
     }
     for (std::size_t i = 0; i < count; ++i) {
@@ -520,6 +1005,7 @@ void GasNetwork::loadData() {
         if (!(file >> connection.pipeId >> connection.fromStation
                     >> connection.toStation)) {
             std::cout << "Error reading connection data\n";
+            logAction("LOAD_FAILED", "file=" + filename + ", invalid or inconsistent data");
             return;
         }
         loadedConnections.push_back(connection);
@@ -530,12 +1016,14 @@ void GasNetwork::loadData() {
     for (const Pipe& pipe : loadedPipes) {
         if (!pipeIds.insert(pipe.id).second) {
             std::cout << "Invalid pipe ID found in file\n";
+            logAction("LOAD_FAILED", "file=" + filename + ", invalid or inconsistent data");
             return;
         }
     }
     for (const Station& station : loadedStations) {
         if (!stationIds.insert(station.id).second) {
             std::cout << "Invalid station ID found in file\n";
+            logAction("LOAD_FAILED", "file=" + filename + ", invalid or inconsistent data");
             return;
         }
     }
@@ -548,6 +1036,7 @@ void GasNetwork::loadData() {
             connection.fromStation == connection.toStation ||
             !usedPipeIds.insert(connection.pipeId).second) {
             std::cout << "Invalid connection found in file\n";
+            logAction("LOAD_FAILED", "file=" + filename + ", invalid or inconsistent data");
             return;
         }
     }
@@ -556,6 +1045,7 @@ void GasNetwork::loadData() {
         bool connectedByRecord = usedPipeIds.count(pipe.id) != 0;
         if (pipe.isConnected != connectedByRecord) {
             std::cout << "Pipe status does not match connection data\n";
+            logAction("LOAD_FAILED", "file=" + filename + ", invalid or inconsistent data");
             return;
         }
     }
@@ -563,5 +1053,7 @@ void GasNetwork::loadData() {
     pipes = std::move(loadedPipes);
     stations = std::move(loadedStations);
     connections = std::move(loadedConnections);
-    std::cout << "Data successfully loaded from data.txt\n";
+    std::cout << "Data successfully loaded from " << filename << "\n";
+    logAction("LOAD", "file=" + filename + ", pipes=" + std::to_string(pipes.size()) +
+              ", stations=" + std::to_string(stations.size()));
 }
