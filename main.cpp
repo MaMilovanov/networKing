@@ -3,6 +3,22 @@
 #include <iostream>
 #include <limits>
 
+namespace {
+    int readMenuChoice() {
+        int choice;
+        while (true) {
+            std::cout << "Enter your choce: ";
+            if (std::cin >> choice) {
+                std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+                return choice;
+            }
+            std::cout << "Invalid input. Please enter menu choice\n";
+            std::cin.clear();
+            std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+        }
+    }
+}
+
 int main() {
     GasNetwork network;
 
@@ -20,15 +36,7 @@ int main() {
         std::cout << "0. Exit\n";
         std::cout << "Enter your choice: ";
 
-        int choice;
-        std::cin >> choice;
-
-        if (std::cin.fail()) {
-            std::cin.clear();
-            std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n'); 
-            std::cout << "Invalid input. Please enter a number between 0 and 9.\n";
-            continue;
-        }
+        int choice = readMenuChoice();
 
         switch (choice) {
             case 1:
