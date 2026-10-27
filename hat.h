@@ -24,19 +24,19 @@ struct Station {
 struct Connection {
     int pipeId=0;
     int fromStation=0;
-    int toStationId=0;
+    int toStation=0;
 };
 
 class GasNetwork {
     public:
     void addPipe();
     void addStation();
-    void showNetwork();
+    void showNetwork() const;
     void togglePipeRepair();
     void manageStation();
     void connectStations();
-    void sort();
-    void saveData();
+    void sort() const;
+    void saveData() const;
     void loadData();
     
     private:
@@ -48,7 +48,7 @@ class GasNetwork {
     int nextStationId() const;
     Pipe* findPipe(int id);
     const Pipe* findPipe(int id) const;
-    Station* findStation(int id) const;
+    Station* findStation(int id);
     const Station* findStation(int id) const;
 };
 
