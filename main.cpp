@@ -23,53 +23,50 @@ int main() {
     GasNetwork network;
 
     while (true) {
-        std::cout << "Gas Network Management System\n";
-        std::cout << "1. Add Pipe\n";
-        std::cout << "2. Add Station\n";
-        std::cout << "3. Show Network\n";
-        std::cout << "4. Toggle Pipe Repair Status\n";
-        std::cout << "5. Manage Station\n";
-        std::cout << "6. Connect Stations\n";
-        std::cout << "7. Sort Pipes and Stations\n";
-        std::cout << "8. Save Data\n";
-        std::cout << "9. Load Data\n";
-        std::cout << "0. Exit\n";
-        std::cout << "Enter your choice: ";
+        std::cout << "\n========== GAS NETWORK MANAGEMENT SYSTEM ==========\n"
+                  << "1. Add Pipe\n"
+                  << "2. Add Station\n"
+                  << "3. Show Network\n"
+                  << "4. Toggle Pipe Repair Status\n"
+                  << "5. Manage Station Workshops\n"
+                  << "6. Connect Stations\n"
+                  << "7. Topological Sort\n"
+                  << "8. Save Data\n"
+                  << "9. Load Data\n"
+                  << "10. Delete Pipe\n"
+                  << "11. Edit Station\n"
+                  << "12. Delete Station\n"
+                  << "13. Search Pipes\n"
+                  << "14. Search Stations\n"
+                  << "15. Batch Edit/Delete Pipes\n"
+                  << "0. Exit\n";
 
         int choice = readMenuChoice();
+        network.logAction("MENU", "choice=" + std::to_string(choice));
 
         switch (choice) {
-            case 1:
-                network.addPipe();
-                break;
-            case 2:
-                network.addStation();
-                break;
-            case 3:
-                network.showNetwork();
-                break;
-            case 4:
-                network.togglePipeRepair();
-                break;
-            case 5:
-                network.manageStation();
-                break;
-            case 6:
-                network.connectStations();
-                break;
-            case 7:
-                network.sort();
-                break;
-            case 8:
-                network.saveData();
-                break;
-            case 9:
-                network.loadData();
-                break;
+            case 1: network.addPipe(); break;
+            case 2: network.addStation(); break;
+            case 3: network.showNetwork(); break;
+            case 4: network.togglePipeRepair(); break;
+            case 5: network.manageStation(); break;
+            case 6: network.connectStations(); break;
+            case 7: network.sort(); break;
+            case 8: network.saveData(); break;
+            case 9: network.loadData(); break;
+            case 10: network.deletePipe(); break;
+            case 11: network.editStation(); break;
+            case 12: network.deleteStation(); break;
+            case 13: network.searchPipes(); break;
+            case 14: network.searchStations(); break;
+            case 15: network.batchEditPipes(); break;
             case 0:
+                network.logAction("EXIT", "User exited the program");
+                std::cout << "Program finished.\n";
                 return 0;
             default:
                 std::cout << "Invalid choice. Please try again.\n";
+                network.logAction("INVALID_MENU_CHOICE", "choice=" + std::to_string(choice));
         }
     }
 }

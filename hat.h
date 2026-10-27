@@ -2,33 +2,34 @@
 #define HAT_H
 
 #include <iostream>
+#include <string>
 #include <vector>
 
 struct Pipe {
     int id = 0;
-    std ::string name;
-    double length=0.0;
-    int diameter=500;
-    bool inRepair=false;
-    bool isConnected=false;
+    std::string name;
+    double length = 0.0;
+    int diameter = 500;
+    bool inRepair = false;
+    bool isConnected = false;
 };
 
 struct Station {
-    int id =0;
+    int id = 0;
     std::string name;
-    int totalNasos=0;
-    int activeNasos=0;
-    int totalRepairWorksNasos=0;
+    int totalNasos = 0;
+    int activeNasos = 0;
+    int totalRepairWorksNasos = 0;
 };
 
 struct Connection {
-    int pipeId=0;
-    int fromStation=0;
-    int toStation=0;
+    int pipeId = 0;
+    int fromStation = 0;
+    int toStation = 0;
 };
 
 class GasNetwork {
-    public:
+public:
     void addPipe();
     void addStation();
     void showNetwork() const;
@@ -38,8 +39,16 @@ class GasNetwork {
     void sort() const;
     void saveData() const;
     void loadData();
-    
-    private:
+
+    void deletePipe();
+    void editStation();
+    void deleteStation();
+    void searchPipes();
+    void searchStations();
+    void batchEditPipes();
+    void logAction(const std::string& action, const std::string& details) const;
+
+private:
     std::vector<Pipe> pipes;
     std::vector<Station> stations;
     std::vector<Connection> connections;
@@ -50,6 +59,10 @@ class GasNetwork {
     const Pipe* findPipe(int id) const;
     Station* findStation(int id);
     const Station* findStation(int id) const;
+
+    std::vector<int> findPipesByUserFilter();
+    std::vector<int> choosePipesFromMatches(const std::vector<int>& matchedIds);
+    bool erasePipeById(int id);
 };
 
 #endif
